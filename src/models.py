@@ -111,19 +111,24 @@ class MOSFETModel:
         V_gs = np.asarray(V_gs)
         I_d = np.zeros_like(V_gs, dtype=float)
         
+        if np.ndim(V_ds) == 0:
+            V_ds = np.full_like(V_gs, V_ds)
+        
         # Cutoff: V_GS <= V_TH, no code needed since I_D will be zero by default
             
         # Triode: V_GS > V_TH, 0 < V_DS < VGS - VTH
         triode = (V_gs > V_th) & (V_ds > 0) & (V_gs - V_th > V_ds)
         if np.any(triode):
             vgs_triode = V_gs[triode]
-            I_d[triode] = k_n * ((vgs_triode - V_th) * V_ds - 0.5 * V_ds**2)
+            vds_triode = V_ds[triode]
+            I_d[triode] = k_n * ((vgs_triode - V_th) * vds_triode - 0.5 * vds_triode**2)
             
         # Saturation: V_GS > V_TH, V_DS >= V_GS - V_TH
         saturation = (V_gs > V_th) & (V_ds >= V_gs - V_th)
         if np.any(saturation):
             vgs_sat = V_gs[saturation]
-            I_d[saturation] = 0.5 * k_n * (vgs_sat - V_th)**2 * (1 + lam * V_ds)
+            vds_sat = V_ds[saturation]
+            I_d[saturation] = 0.5 * k_n * (vgs_sat - V_th)**2 * (1 + lam * vds_sat)
             
         return I_d
     

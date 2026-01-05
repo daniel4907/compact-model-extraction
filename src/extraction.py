@@ -153,6 +153,18 @@ class ModelExtractor:
         return report
     
     def mosfet_fit(self, V_gs, I_data, V_ds, initial_params=None):
+        """
+        Fit a single I-V curve to extract threshold voltage, transconductance, lambda, and drain-to-source voltage of a device
+
+        Args:
+            V_gs (scalar/numpy array): gate-to-source voltage
+            I_data (scalar/numpy array): collected current values
+            V_ds (scalar/numpy array): drain-to-source voltage
+            initial_params (dict, optional): initial guesses for V_th, k_n, and lambda
+
+        Returns:
+            dict: report containing fitted parameters, errors and solver status
+        """
         if initial_params is None:
             initial_params = {'V_th': 0.5, 'k_n': 1e-4, 'lam': 0.0}
             
@@ -204,3 +216,56 @@ class ModelExtractor:
         self.report = report
         
         return report
+    
+    def multi_mosfet_fit(self, datasets, initial_params=None):
+        if initial_params is None:
+            initial_params = {'V_th': 0.5, 'k_n': 1e-4, 'lam': 0.0}
+            
+        if 'V_th' not in initial_params:
+            initial_params['V_th'] = 0.5
+        if 'k_n' not in initial_params:
+            initial_params['k_n'] = 1e-4
+        if 'lam' not in initial_params:
+            initial_params['lam'] = 0.0
+            
+        def global_residuals(param_vector):
+            V_th, k_n, lam = param_vector
+            residuals = []
+            
+            for V_ds, I_measured, V_gs in datasets:
+                local_params = {'V_th': V_th, 'k_n': k_n, 'lam': lam, 'V_ds': V_ds}
+                Vgs_array = np.full_like(V_ds, V_gs)
+                I_data = self.model.compute_current(Vgs_array, local_params)
+                residual = (I_data - I_measured) / np.maximum(np.abs(I_measured), 1e-15)
+                residuals.append(residual)
+            
+            return np.concatenate(residuals)
+        
+        x0 = np.array([initial_params['V_th'], initial_params['k_n'], initial_params['lam']])
+        bounds = self.model.get_param_bounds()
+        lower_bound = np.array([bounds['V_th'][0], bounds['k_n'][0], bounds['lam'][0]])
+        upper_bound = np.array([bounds['V_th'][1], bounds['k_n'][1], bounds['lam'][1]])
+        ls = least_squares(
+            global_residuals, 
+            x0, 
+            bounds=(lower_bound, upper_bound), 
+            method='trf'
+        )
+        
+        ls_params = {'V_th': ls.x[0], 'k_n': ls.x[1], 'lam': ls.x[2]}
+        res = global_residuals(ls.x)
+        rms_err = np.sqrt(np.mean(res**2))
+        
+        report = {
+            'parameters': ls_params,
+            'rms_err': rms_err,
+            'success': ls.success,
+            'num_iters': ls.nfev,
+            'message': ls.message,
+        }
+        
+        self.result = ls
+        self.report = report
+        
+        return report
+    
