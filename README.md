@@ -3,7 +3,7 @@
 A Python framework for extracting semiconductor device compact model parameters from TCAD simulations.
 
 ## Current features:
-* Fit diode model (saturation current *$I_s$*, ideality factor *$n$* and series resistance *$R_s$*) to I-V data
+* Fit diode model to I-V data
 * Perform global multi-temperature diode fitting using Arrhenius-style $I_s(T)$ model with bandgap $E_g$
 * MOSFET Extraction
     * Fit Level 1 (Schichman-Hodges) model to single $I_d-V_{gs}$ curves

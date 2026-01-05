@@ -112,6 +112,9 @@ class ModelExtractor:
             return Is_ref * (T / T_ref)**3 * (np.exp(((Eg * q_e) / k_B) * (1/T_ref - 1/T)))
         
         def global_residuals(param_vector):
+            """
+            Calculates normalized current residuals
+            """
             Is_ref, Eg, n, Rs = param_vector
             residuals = []
             
@@ -218,6 +221,16 @@ class ModelExtractor:
         return report
     
     def multi_mosfet_fit(self, datasets, initial_params=None):
+        """
+        Fits multiple I-V curves to extract threshold voltage, transconductance and lambda of a device
+
+        Args:
+            datasets (list): list ot tuples (V_ds, I_measured, V_gs)
+            initial_params (dict, optional): initial guesses for V_th, k_n and lam
+
+        Returns:
+            dict: report containing fitted parameters, errors and solver status
+        """
         if initial_params is None:
             initial_params = {'V_th': 0.5, 'k_n': 1e-4, 'lam': 0.0}
             
@@ -229,6 +242,9 @@ class ModelExtractor:
             initial_params['lam'] = 0.0
             
         def global_residuals(param_vector):
+            """
+            Calculates normalized current residuals
+            """
             V_th, k_n, lam = param_vector
             residuals = []
             

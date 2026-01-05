@@ -56,8 +56,8 @@ def plot_mosfet_fit(V_gs, I_data, model, fitted_params, filename=None, yscale='l
         I_data (scalar/numpy array): curret from Id-Vgs data
         model: instance of device model class
         fitted_params (dict): dict containing fitted parameters from least squares algorithm
-        filename (optional): filename for saving the error plot locally, defaults to None
-        yscale (str): 'linear' or 'log', defaults to 'linear'
+        filename (str, optional): filename for saving the error plot locally, defaults to None
+        yscale (str, optional): 'linear' or 'log', defaults to 'linear'
     """
     I_fit = model.compute_current(V_gs, fitted_params)
     
@@ -80,6 +80,17 @@ def plot_mosfet_fit(V_gs, I_data, model, fitted_params, filename=None, yscale='l
     plt.show()
     
 def plot_mosfet_multi(V_ds, I_data, model, fitted_params, V_gs_label=None, filename=None):
+    """
+    Generates a comparison of the Id-Vds data and the Id-Vds curves from the fitted parameters
+
+    Args:
+        V_ds (scalar/numpy array): drain-to-source voltage
+        I_data (scalar/numpy array): curret from Id-Vgs data
+        model: instance of device model class
+        fitted_params (dict): dict containing fitted parameters from least squares algorithm
+        V_gs_label (str, optional): label for title of plots
+        filename (str, optional): filename for saving the error plot locally, defaults to None
+    """
     I_fit = model.compute_current(fitted_params['vgs_array'], {**fitted_params, 'V_ds': V_ds})
     
     plt.semilogy(V_ds, I_data, label='Original data')
