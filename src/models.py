@@ -10,30 +10,57 @@ from scipy.constants import k as k_B, e as q_e
 class DiodeModel:
     def __init__(self, T=300):
         """
-        Class constructor for a generic diode device at room temperature, calculates thermal voltage for device as well
+        Class constructor for a generic diode device at room temperature
 
         Args:
             T (int, optional): temperature, defaults to 300.
         """
         self.temp = T
-        self.V_t = (k_B * T) / q_e
         
-    def compute_current(self, V, params):
+    def compute_current(self, V, params, T=None):
         """
-        Compute diode current using the Shockley equation
+        Comptue diode current using Shockley equation with Newton-Raphson iteration to account for series resistance
 
         Args:
             V (scalar/numpy array): applied voltage
-            params: dict with keys 'I_s' (saturation current) and 'n' (ideality factor)
+            params (dict): model parameters including saturation current, ideality, and series resistance
+            T (float, optional): temperature in Kelvin, defaults to model's temperature if None
 
         Returns:
-            A: calculated current at each voltage value
+            Numpy array: calculated current at each voltage point
         """
         I_s = params['I_s']
         n = params['n']
-        exp = np.clip(V / (n * self.V_t), -50, 50) # prevent exponential overflow
+        R_s = params.get('R_s', 0.0)
         
-        return I_s * (np.exp(exp) - 1)
+        if T is None:
+            T = self.temp
+            
+        V = np.asarray(V)
+        
+        def solve_current(V):
+            I = 0.0
+            
+            for _ in range(50):
+                Vd = V - I * R_s
+                arg = np.clip(q_e * Vd / (n * k_B * T), -50, 50) # prevent exponential overflow
+                f_val = I_s * (np.exp(arg) - 1) - I
+                df_val = -(I_s * np.exp(arg) * R_s * q_e / (n * k_B * T)) - 1
+                
+                if abs(df_val) < 1e-15:
+                    break
+                
+                I_new = I - f_val / df_val
+                
+                if abs(I_new - I) < 1e-12:
+                    return I_new
+                
+                I = I_new
+                
+            return I
+        
+        solve_vec = np.vectorize(solve_current, otypes=[float])(V)
+        return solve_vec
     
     def get_param_bounds(self):
         """
@@ -44,5 +71,7 @@ class DiodeModel:
         """
         return {
             'I_s': (1e-16, 1e-6),
-            'n': (1.0, 2.0)
+            'Eg': (0.1, 5.0),
+            'n': (1.0, 2.0),
+            'R_s': (0.0, 10.0)
         }

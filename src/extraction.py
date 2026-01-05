@@ -4,6 +4,7 @@
 
 import numpy as np
 from scipy.optimize import least_squares
+from scipy.constants import k as k_B, e as q_e
 
 class ModelExtractor:
     def __init__(self, model):
@@ -17,45 +18,53 @@ class ModelExtractor:
         self.result = None
         self.report = None
         
-    def diode_fit(self, V_data, I_data, initial_params=None):
+    def diode_fit(self, V_data, I_data, T=None, initial_params=None):
         """
-        Diode fit algorithm for resolving I_s and n from given I-V curve data
+        Fit a single I-V curve to extract saturation current, ideality factor and series resistance of a device
 
         Args:
             V_data (scalar/numpy array): applied voltage
-            I_data (scalar/numpy array): current data
-            initial_params (dict, optional): initial parameter guess, defaults to None and uses device bounds
+            I_data (scalar/numpy array): measured current
+            T (float, optional): temperature in Kelvin, defaults to model temperature if None
+            initial_params (dict, optional): initial guess for I_s, n and R_s
 
         Returns:
-            report: dict summarizing estimated parameters from least squares algorithm and other things
+            dict: report containing fitted parameters, errors and solver status
         """
         if initial_params is None:
-            initial_params = {'I_s': 1e-12, 'n': 1.0}
+            initial_params = {'I_s': 1e-12, 'n': 1.0, 'R_s': 0.1}
+            
+        if 'I_s' not in initial_params:
+            initial_params['I_s'] = 1e-12
+        if 'n' not in initial_params:
+            initial_params['n'] = 1.0
+        if 'R_s' not in initial_params:
+            initial_params['R_s'] = 0.1
         
-        def residuals(param_vector):
+        def residuals(param_vector, V_data, I_data, T):
             """
-            Calculates the residuals for the least squares algorithm
-
-            Args:
-                param_vector (dict): dict containing current I_s and n guesses
-
-            Returns:
-                residual (scalar/numpy array): residual calculated based on guess and data values
+            Calculates normalized current residuals
             """
-            params = {'I_s': param_vector[0], 'n': param_vector[1]}
-            I_guess = self.model.compute_current(V_data, params)
+            params = {'I_s': param_vector[0], 'n': param_vector[1], 'R_s': param_vector[2]}
+            I_guess = self.model.compute_current(V_data, params, T=T)
             residual = (I_guess - I_data) / np.maximum(np.abs(I_data), 1e-15)
             
             return residual
         
-        x0 = np.array([initial_params['I_s'], initial_params['n']])
+        x0 = np.array([initial_params['I_s'], initial_params['n'], initial_params['R_s']])
         bounds = self.model.get_param_bounds()
-        lower_bound = np.array([bounds['I_s'][0], bounds['n'][0]])
-        upper_bound = np.array([bounds['I_s'][1], bounds['n'][1]])
-        ls = least_squares(residuals, x0, bounds=(lower_bound, upper_bound), method='trf')
+        lower_bound = np.array([bounds['I_s'][0], bounds['n'][0], bounds['R_s'][0]])
+        upper_bound = np.array([bounds['I_s'][1], bounds['n'][1], bounds['R_s'][1]])
+        ls = least_squares(
+            residuals, 
+            x0, 
+            bounds=(lower_bound, upper_bound), 
+            args=(V_data, I_data, T), 
+            method='trf'
+        )
         
-        ls_params = {'I_s': ls.x[0], 'n': ls.x[1]}
-        I_fit = self.model.compute_current(V_data, ls_params)
+        ls_params = {'I_s': ls.x[0], 'n': ls.x[1], 'R_s': ls.x[2]}
+        I_fit = self.model.compute_current(V_data, ls_params, T=T)
         res = (I_fit - I_data) / np.maximum(np.abs(I_data), 1e-15)
         rms_err = np.sqrt(np.mean(res**2))
         max_err = np.max(np.abs(res))
@@ -64,6 +73,75 @@ class ModelExtractor:
             'parameters': ls_params,
             'rms_err': rms_err,
             'max_err': max_err,
+            'success': ls.success,
+            'num_iters': ls.nfev,
+            'message': ls.message,
+        }
+        
+        self.result = ls
+        self.report = report
+        
+        return report
+        
+    def global_fit(self, datasets, initial_params=None):
+        """
+        Perform a simulatenous fit on multiple I-V datasets at different temperatures
+
+        Args:
+            datasets (list): list ot tuples (V_data, I_data, T)
+            initial_params (dict, optional): initial guesses for I_s, Eg, n and R_s
+
+        Returns:
+            dict: report contianing fitted gloabl parameters and combined RMS error
+        """
+        T_ref = 300.0
+        
+        if initial_params is None:
+            initial_params = {'I_s': 1e-12, 'Eg': 1.12, 'n': 1.0, 'R_s': 0.1}
+            
+        if 'I_s' not in initial_params:
+            initial_params['I_s'] = 1e-12
+        if 'Eg' not in initial_params:
+            initial_params['Eg'] = 1.12
+        if 'n' not in initial_params:
+            initial_params['n'] = 1.0
+        if 'R_s' not in initial_params:
+            initial_params['R_s'] = 0.1
+        
+        def Is_at_T(Is_ref, Eg, T):
+            return Is_ref * (T / T_ref)**3 * (np.exp(((Eg * q_e) / k_B) * (1/T_ref - 1/T)))
+        
+        def global_residuals(param_vector):
+            Is_ref, Eg, n, Rs = param_vector
+            residuals = []
+            
+            for V, I_measured, T in datasets:
+                Is_local = Is_at_T(Is_ref, Eg, T)
+                local_params = {'I_s': Is_local, 'n': n, 'R_s': Rs}
+                I_data = self.model.compute_current(V, local_params, T=T)
+                residual = (I_data - I_measured) / np.maximum(np.abs(I_measured), 1e-15)
+                residuals.append(residual)
+            
+            return np.concatenate(residuals)
+        
+        x0 = np.array([initial_params['I_s'], initial_params['Eg'], initial_params['n'], initial_params['R_s']])
+        bounds = self.model.get_param_bounds()
+        lower_bound = np.array([bounds['I_s'][0], bounds['Eg'][0], bounds['n'][0], bounds['R_s'][0]])
+        upper_bound = np.array([bounds['I_s'][1], bounds['Eg'][1], bounds['n'][1], bounds['R_s'][1]])
+        ls = least_squares(
+            global_residuals, 
+            x0, 
+            bounds=(lower_bound, upper_bound),  
+            method='trf'
+        )
+        
+        ls_params = {'I_s': ls.x[0], 'Eg': ls.x[1], 'n': ls.x[2], 'R_s': ls.x[3]}
+        res = global_residuals(ls.x)
+        rms_err = np.sqrt(np.mean(res**2))
+        
+        report = {
+            'parameters': ls_params,
+            'rms_err': rms_err,
             'success': ls.success,
             'num_iters': ls.nfev,
             'message': ls.message,
