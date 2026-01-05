@@ -10,7 +10,7 @@ from scipy.constants import k as k_B, e as q_e
 class DiodeModel:
     def __init__(self, T=300):
         """
-        Class constructor for a generic diode device at room temperature
+        Class constructor for a generic diode device
 
         Args:
             T (int, optional): temperature, defaults to 300.
@@ -67,7 +67,7 @@ class DiodeModel:
         Returns standard bounds for device parameter
 
         Returns:
-            Dict: standard saturation current (1e-16 to 1e-6 A) and ideality factor range (1.0 to 2.0)
+            Dict: standard saturation current, bandgap, ideality factor and series resistance ranges
         """
         return {
             'I_s': (1e-16, 1e-6),
@@ -75,3 +75,68 @@ class DiodeModel:
             'n': (1.0, 2.0),
             'R_s': (0.0, 10.0)
         }
+        
+# 3 regions for MOSFETs: cutoff, triode and saturation regions
+# cutoff: I_D = 0
+# triode: I_D = mu_n * C_ox * (W / L) * [(V_GS - V_TH) * V_DS - V_DS**2/2], where k_n = mu_n * C_ox * (W / L)
+# saturation: I_D = 1/2 k_n (V_GS - V_TH)**2 (1 + lambda * V_DS)
+
+# I_D: drain current
+# mu_n: electron mobility in channel
+# C_ox: gate-oxide capacitance
+# W: channel width
+# L: channel length
+# V_GS: gate-to-source voltage
+# V_TH: threshold voltage
+# V_DS: drain-to-soruce voltage
+# k_n: transconductance
+# lambda: channel-length modulation parameter
+        
+class MOSFETModel:
+    def __init__(self, T=300):
+        """
+        Class constructor for a generic MOSFET device
+
+        Args:
+            T (int, optional): temperature, defaults to 300.
+        """
+        self.temp = T
+        
+    def compute_current(self, V_gs, params, T=None):
+        V_th = params['V_th']
+        k_n = params['k_n']
+        V_ds = params['V_ds']
+        lam = params.get('lam', 0.0)
+        
+        V_gs = np.asarray(V_gs)
+        I_d = np.zeros_like(V_gs, dtype=float)
+        
+        # Cutoff: V_GS <= V_TH, no code needed since I_D will be zero by default
+            
+        # Triode: V_GS > V_TH, 0 < V_DS < VGS - VTH
+        triode = (V_gs > V_th) & (V_ds > 0) & (V_gs - V_th > V_ds)
+        if np.any(triode):
+            vgs_triode = V_gs[triode]
+            I_d[triode] = k_n * ((vgs_triode - V_th) * V_ds - 0.5 * V_ds**2)
+            
+        # Saturation: V_GS > V_TH, V_DS >= V_GS - V_TH
+        saturation = (V_gs > V_th) & (V_ds >= V_gs - V_th)
+        if np.any(saturation):
+            vgs_sat = V_gs[saturation]
+            I_d[saturation] = 0.5 * k_n * (vgs_sat - V_th)**2 * (1 + lam * V_ds)
+            
+        return I_d
+    
+    def get_param_bounds(self):
+        """
+        Returns standard bounds for MOSFET parameters
+
+        Returns:
+            Dict: standard threshold voltage, transconductance, and lambda ranges
+        """
+        return {
+            'V_th': (0.1, 5.0),
+            'k_n': (1e-9, 1e-1),
+            'lam': (0.0, 0.5)
+        }
+        

@@ -83,7 +83,7 @@ class ModelExtractor:
         
         return report
         
-    def global_fit(self, datasets, initial_params=None):
+    def diode_temp_fit(self, datasets, initial_params=None):
         """
         Perform a simulatenous fit on multiple I-V datasets at different temperatures
 
@@ -151,4 +151,56 @@ class ModelExtractor:
         self.report = report
         
         return report
+    
+    def mosfet_fit(self, V_gs, I_data, V_ds, initial_params=None):
+        if initial_params is None:
+            initial_params = {'V_th': 0.5, 'k_n': 1e-4, 'lam': 0.0}
+            
+        if 'V_th' not in initial_params:
+            initial_params['V_th'] = 0.5
+        if 'k_n' not in initial_params:
+            initial_params['k_n'] = 1e-4
+        if 'lam' not in initial_params:
+            initial_params['lam'] = 0.0
+            
+        def residuals(param_vector, V_gs, I_data, V_ds):
+            """
+            Calculates normalized current residuals
+            """
+            params = {'V_th': param_vector[0], 'k_n': param_vector[1], 'lam': param_vector[2], 'V_ds': V_ds}
+            I_guess = self.model.compute_current(V_gs, params)
+            residual = (I_guess - I_data) / np.maximum(np.abs(I_data), 1e-15)
+            
+            return residual
         
+        x0 = np.array([initial_params['V_th'], initial_params['k_n'], initial_params['lam']])
+        bounds = self.model.get_param_bounds()
+        lower_bound = np.array([bounds['V_th'][0], bounds['k_n'][0], bounds['lam'][0]])
+        upper_bound = np.array([bounds['V_th'][1], bounds['k_n'][1], bounds['lam'][1]])
+        ls = least_squares(
+            residuals, 
+            x0, 
+            bounds=(lower_bound, upper_bound), 
+            args=(V_gs, I_data, V_ds), 
+            method='trf'
+        )
+        
+        ls_params = {'V_th': ls.x[0], 'k_n': ls.x[1], 'lam': ls.x[2], 'V_ds': V_ds}
+        I_fit = self.model.compute_current(V_gs, ls_params)
+        res = (I_fit - I_data) / np.maximum(np.abs(I_data), 1e-15)
+        rms_err = np.sqrt(np.mean(res**2))
+        max_err = np.max(np.abs(res))
+        
+        report = {
+            'parameters': ls_params,
+            'rms_err': rms_err,
+            'max_err': max_err,
+            'success': ls.success,
+            'num_iters': ls.nfev,
+            'message': ls.message,
+        }
+        
+        self.result = ls
+        self.report = report
+        
+        return report

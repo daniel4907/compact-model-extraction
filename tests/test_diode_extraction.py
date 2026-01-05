@@ -1,8 +1,10 @@
 import numpy as np
 from scipy.constants import e as q_e, k as k_B
 
-from src.models import DiodeModel
+from src.models import DiodeModel, MOSFETModel
 from src.extraction import ModelExtractor
+
+## Single-temperature fit diode test
 
 model = DiodeModel()
 extractor = ModelExtractor(model)
@@ -32,8 +34,10 @@ assert((ls['success'] is True))
 
 print("Single fit passed.\n")
 
+## Multi-temperature fit diode test
+
 T_ref = 300.0
-true_global = {
+true_diode_temp = {
     'I_s': 1e-10,
     'Eg': 1.12,
     'n': 1.5,
@@ -41,7 +45,7 @@ true_global = {
 }
 
 def Is_at_T(T):
-    return true_global['I_s'] * (T / T_ref)**3 * np.exp(((true_global['Eg'] * q_e) / k_B) * (1/T_ref - 1/T))
+    return true_diode_temp['I_s'] * (T / T_ref)**3 * np.exp(((true_diode_temp['Eg'] * q_e) / k_B) * (1/T_ref - 1/T))
 
 temps = [280, 300, 320, 340]
 datasets = []
@@ -49,20 +53,20 @@ V_sweep = np.linspace(0, 0.8, 50)
 
 for T in temps:
     Is_local = Is_at_T(T)
-    local_params = {'I_s': Is_local, 'n': true_global['n'], 'R_s': true_global['R_s']}
+    local_params = {'I_s': Is_local, 'n': true_diode_temp['n'], 'R_s': true_diode_temp['R_s']}
     I_ideal = model.compute_current(V_sweep, local_params, T=T)
     I_noise = I_ideal * (1 + np.random.normal(0, 0.01, size=I_ideal.shape))
     datasets.append((V_sweep, I_noise, T))
 
-global_guess = {'I_s': 1e-11, 'Eg': 1.0, 'n': 1.2, 'R_s': 0.1}
-report_global = extractor.global_fit(datasets, initial_params=global_guess)
-fit_global = report_global['parameters']
+diode_temp_guess = {'I_s': 1e-11, 'Eg': 1.0, 'n': 1.2, 'R_s': 0.1}
+report_diode_temp = extractor.diode_temp_fit(datasets, initial_params=diode_temp_guess)
+fit_diode_temp = report_diode_temp['parameters']
 
-print("True global:", true_global)
-print("Fitted global:", fit_global)
+print("True diode temp:", true_diode_temp)
+print("Fitted diode temp:", fit_diode_temp)
 
-assert np.abs((fit_global['I_s'] - true_global['I_s']) / true_global['I_s']) < 0.2
-assert np.abs((fit_global['Eg'] - true_global['Eg']) / true_global['Eg']) < 0.1
-assert np.abs((fit_global['n'] - true_global['n']) / true_global['n']) < 0.1
-assert np.abs((fit_global['R_s'] - true_global['R_s']) / true_global['R_s']) < 0.1
-print("Global fit passed.\n")
+assert np.abs((fit_diode_temp['I_s'] - true_diode_temp['I_s']) / true_diode_temp['I_s']) < 0.2
+assert np.abs((fit_diode_temp['Eg'] - true_diode_temp['Eg']) / true_diode_temp['Eg']) < 0.1
+assert np.abs((fit_diode_temp['n'] - true_diode_temp['n']) / true_diode_temp['n']) < 0.1
+assert np.abs((fit_diode_temp['R_s'] - true_diode_temp['R_s']) / true_diode_temp['R_s']) < 0.1
+print("Diode temp fit passed.\n")
