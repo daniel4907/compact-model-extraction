@@ -4,16 +4,49 @@ import os, pytest
 from src.dataloader import DataLoader
 from src.models import MOSFETModel
 from src.extraction import ModelExtractor
-from src.utils import generate_mosfet_csv
+from src.utils import *
 
 # generate gold test data
+# --- Test Single MOSFET Curve Generation and Loading ---
+
+single_curve_params = {'V_th': 1.0, 'k_n': 1e-2, 'lam': 0.05}
+
+# 1. Transfer Curve (Id-Vgs)
+transfer_path = 'data/test_mosfet_transfer.csv'
+vgs_sweep = np.linspace(0, 3, 50) # Sweep 0 to 3V, crossing Vth=1.0
+generate_mosfet_csv(transfer_path, single_curve_params, sweep_type='Id-Vgs', sweep=vgs_sweep, val=1.0)
+
+# 2. Output Curve (Id-Vds)
+output_path = 'data/test_mosfet_output.csv'
+vds_sweep = np.linspace(0, 5, 50)
+generate_mosfet_csv(output_path, single_curve_params, sweep_type='Id-Vds', sweep=vds_sweep, val=3.0) # Vgs=3.0 > Vth=1.0
+
+# multi-curve MOSFET data
 
 filepath = 'data/test_mosfet_data.csv'
-true_params = {'V_th': 0.7, 'k_n': 0.001, 'lam': 0.02}
-vgs_list = [1.0, 2.0, 3.0]
-vds_sweep = np.linspace(0, 5, 20)
+true_params = {'V_th': 3.0, 'k_n': 1e-2, 'lam': 0.3}
+vgs_sweep = [1.0, 2.0, 3.0, 4.0, 5.0]
+vds_sweep = np.linspace(0, 10, 50)
 
-generate_mosfet_csv(filepath, true_params, vgs_list, vds_sweep)
+generate_multi_mosfet_csv(filepath, true_params, vgs_sweep, vds_sweep)
+
+# single-temperature diode data
+
+filepath = 'data/test_diode_data.csv'
+true_params = {'I_s': 1e-10, 'n': 1.5, 'R_s': 2.5}
+v_sweep = np.linspace(0, 5, 50)
+T = 300
+
+generate_diode_csv(filepath, true_params, v_sweep, T=T)
+
+# multi-temperature diode data
+
+filepath = 'data/test_multitemp_diode_data.csv'
+true_params = {'I_s': 1e-10, 'n': 1.5, 'R_s': 2.5}
+v_sweep = np.linspace(0, 5, 50)
+temps = [280, 300, 320, 340]
+
+generate_multitemp_diode_csv(filepath, true_params, v_sweep, temps)
 
 # test loading CSV and mapping columns
 

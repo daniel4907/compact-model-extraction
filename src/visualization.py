@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-def plot_diode_fit(V_data, I_data, model, fitted_params, filename=None):
+def plot_diode_fit(V_data, I_data, model, fitted_params, filename=None, temps=None):
     """
     Generates a comparison of the I-V data and the I-V curve from the fitted parameters
 
@@ -11,20 +11,40 @@ def plot_diode_fit(V_data, I_data, model, fitted_params, filename=None):
         model: instance of device model class
         fitted_params (dict): dict containing fitted parameters from least squares algorithm
         filename (optional): filename for saving the error plot locally, defaults to None
-    """
-    plt.semilogy(V_data, I_data, label='Original data')
-    I_fit = model.compute_current(V_data, fitted_params)
-    plt.semilogy(V_data, I_fit, label='Fitted data')
-    plt.legend()
-    plt.xlabel("Voltage [V]")
-    plt.ylabel("Current [A]")
+        temps (optional): array of temperatures for multi-temp diode curves, defaults to None
+    """ 
+    if temps is None:
+        plt.semilogy(V_data, I_data, label='Original data')
+        I_fit = model.compute_current(V_data, fitted_params)
+        plt.semilogy(V_data, I_fit, label='Fitted data')
+        plt.legend()
+        plt.xlabel("Voltage [V]")
+        plt.ylabel("Current [A]")
     
-    if filename is not None:
-        plt.savefig(filename, dpi=300, bbox_inches='tight')
+        if filename is not None:
+            plt.savefig(filename, dpi=300, bbox_inches='tight')
         
-    plt.show()
+        plt.show()
+    else:
+        for i, T in enumerate(temps):
+            local_params = fitted_params.copy()
+            if 'Eg' in fitted_params:
+                local_params['I_s'] = model.compute_sat_current(fitted_params['I_s'], fitted_params['Eg'], T)
+            V_i = V_data[i] if isinstance(V_data, list) else V_data
+            I_i = I_data[i] if isinstance(I_data, list) else I_data
+            I_fit = model.compute_current(V_i, local_params, T=T)
+            plt.figure()
+            plt.semilogy(V_i, I_i, label=f"Data {T}K")
+            plt.semilogy(V_i, I_fit, label=f"Fit {T}K")
+            plt.title(f"Diode I-V curve at {T} K")
+            plt.legend()
+            
+            if filename is not None:
+                plt.savefig(f"{filename}_{T}K", dpi=300, bbox_inches='tight')
+            
+        plt.show()
     
-def diode_error_plot(V_data, I_data, model, fitted_params, filename=None):
+def diode_error_plot(V_data, I_data, model, fitted_params, filename=None, temps=None):
     """
     Generates a relative error plot for each voltage point using the I-V data and the fitted parameters
 
@@ -34,13 +54,62 @@ def diode_error_plot(V_data, I_data, model, fitted_params, filename=None):
         model: instance of device model class
         fitted_params (dict): dict containing fitted parameters from least squares algorithm
         filename (optional): filename for saving the error plot locally, defaults to None
+        temps (optional): array of temperatures for multi-temp diode curves, defaults to None
     """
-    I_fit = model.compute_current(V_data, fitted_params)
-    err = (I_fit - I_data) / np.maximum(np.abs(I_data), 1e-15)
-    plt.plot(V_data, err, label='Relative error')
+    if temps is None:
+        I_fit = model.compute_current(V_data, fitted_params)
+        err = (I_fit - I_data) / np.maximum(np.abs(I_data), 1e-15)
+        plt.figure()
+        plt.plot(V_data, err, label='Relative error')
+        plt.legend()
+        plt.xlabel("Voltage [V]")
+        plt.ylabel("Relative error")
+    
+        if filename is not None:
+            plt.savefig(filename, dpi=300, bbox_inches='tight')
+        
+        plt.show()
+    else:
+        for i, T in enumerate(temps):
+            local_params = fitted_params.copy()
+            if 'Eg' in fitted_params:
+                local_params['I_s'] = model.compute_sat_current(fitted_params['I_s'], fitted_params['Eg'], T)
+            V_i = V_data[i] if isinstance(V_data, list) else V_data
+            I_i = I_data[i] if isinstance(I_data, list) else I_data
+            I_fit = model.compute_current(V_i, local_params, T=T)
+            err = (I_fit - I_i) / np.maximum(np.abs(I_i), 1e-15)
+            
+            plt.figure()
+            plt.plot(V_i, err, label=f'Relative error {T}K')
+            plt.legend()
+            plt.xlabel("Voltage [V]")
+            plt.ylabel("Relative error")
+            plt.title(f"Diode fit relative error at {T} K")
+            
+            if filename is not None:
+                plt.savefig(filename, dpi=300, bbox_inches='tight')
+        
+            plt.show()
+            
+def diode_sat_current_plot(temps, model, fitted_params, filename=None):
+    """
+    Plots the saturation current as a function of temperature
+
+    Args:
+        temps (list): temperature list
+        model: instance of device model class
+        fitted_params (dict): dict containing fitted parameters from least squares algorithm
+        filename (optional): filename for saving the error plot locally, defaults to None
+    """
+    Is = fitted_params['I_s']
+    Eg = fitted_params['Eg']
+    Is_vals = [model.compute_sat_current(Is, Eg, T) for T in temps]
+    
+    plt.figure()
+    plt.semilogy(temps, Is_vals, label='Fitted $I_s(T)$')
+    plt.xlabel("Temperature [K]")
+    plt.ylabel("Saturation current [A]")
     plt.legend()
-    plt.xlabel("Voltage [V]")
-    plt.ylabel("Relative error")
     
     if filename is not None:
         plt.savefig(filename, dpi=300, bbox_inches='tight')

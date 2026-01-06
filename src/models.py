@@ -62,6 +62,9 @@ class DiodeModel:
         solve_vec = np.vectorize(solve_current, otypes=[float])(V)
         return solve_vec
     
+    def compute_sat_current(self, Is, Eg, T, T_ref=300):
+        return Is * (T / T_ref)**3 * np.exp(((Eg * q_e) / k_B) * (1/T_ref - 1/T))
+    
     def get_param_bounds(self):
         """
         Returns standard bounds for device parameter
