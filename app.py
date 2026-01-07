@@ -407,10 +407,22 @@ elif device_type == "MOSFET": # MOSFET logic
         
         with tab1:
             st.markdown("### Physical Channel State")
+            
+            if df is not None:
+                vgs_min = float(df['V_gs'].min())
+                vgs_max = float(df['V_gs'].max())
+                vds_min = float(df['V_ds'].min())
+                vds_max = float(df['V_ds'].max())
+            else:
+                vgs_min = 0.0
+                vgs_max = 5.0
+                vds_min = 0.0
+                vds_max = 5.0
+            
             v_col1, v_col2 = st.columns(2)
             with v_col1:
-                vis_vgs = st.slider("Gate-to-Source Voltage ($V_{gs}$)", 0.0, 5.0, 1.0)
-                vis_vds = st.slider("Drain-to-Source Voltage ($V_{ds}$)", 0.0, 5.0, 0.5)
+                vis_vgs = st.slider("Gate-to-Source Voltage ($V_{gs}$)", min_value=(vgs_min - 0.5), max_value=(vgs_max + 0.5), value=vgs_min, format="%.2f")
+                vis_vds = st.slider("Drain-to-Source Voltage ($V_{ds}$)", min_value=(vds_min - 0.5), max_value=(vds_max + 0.5), value=vds_min, format="%.2f")
                 
             with v_col2:
                 fig_struct, ax_struct = plt.subplots(figsize=(5, 3))
