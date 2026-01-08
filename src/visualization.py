@@ -332,3 +332,76 @@ def plot_3d_fet_surface(model, params, vgs_max=5.0, vds_max=5.0):
     )
     
     return fig
+
+def plot_diode_bands(band, filename=None):
+    """
+    Plots energy band diagram for PN junction
+    """
+    x = band['x'] * 1e4
+    Ec = band['Ec']
+    Ev = band['Ev']
+    Ei = band['Ei']
+    Efp = band['Efp']
+    Efn = band['Efn']
+    v_bias = band['v_bias']
+    
+    fig, ax = plt.subplots(figsize=(8, 5))
+    
+    ax.plot(x, Ec, color='blue', linewidth=2, label='$E_c$')
+    ax.plot(x, Ev, color='red', linewidth=2, label='$E_v$')
+    
+    if np.any(np.abs(v_bias)) > 1e-4:
+        ax.plot(x, Efp, 'b--', linewidth=1.5, label='$E_{fp}$')
+        ax.plot(x, Efn, 'r--', linewidth=1.5, label='$E_{fn}$')
+    else:
+        ax.plot(x, Efp, 'k--', linewidth=1.5, label='$E_f$')
+    ax.plot(x, Ei, 'g--', linewidth=1.5, label='$E_i$')
+    ax.fill_between(x, Ev, Ec, color='gray', alpha=0.1)
+    
+    ax.set_xlabel('Position [$\mu m$]')
+    ax.set_ylabel('Energy Level [eV]')
+    ax.set_title('PN Junction Energy Bands')
+    ax.grid(True, linestyle=':', alpha=0.6)
+    ax.legend(loc='best')
+    
+    if filename is not None:
+        plt.savefig(filename, dpi=300, bbox_inches='tight')
+        
+    return fig
+
+def plot_mos_bands(band, filename=None):
+    """
+    Plots energy band diagram for MOS capacitors
+    """
+    x = band['x'] * 1e4
+    Ec = band['Ec']
+    Ev = band['Ev']
+    Ei = band['Ei']
+    Ef = band['Ef']
+    phi_s = band['phi_s']
+    
+    fig, ax = plt.subplots(figsize=(8, 5))
+    
+    ax.plot(x, Ec, color='blue', linewidth=2, label='$E_c$')
+    ax.plot(x, Ev, color='red', linewidth=2, label='$E_v$')
+    ax.plot(x, Ei, 'g--', linewidth=1.5, label='$E_i$')
+    ax.plot(x, Ef, 'k--', linewidth=1.5, label='$E_f$')
+    
+    ax.axvline(0, color='black', linewidth=3, linestyle='-')
+    ax.text(-0.05, 0, 'Oxide', rotation=90, va='center', ha='right', fontsize=12, fontweight='bold')
+    
+    if np.any(Ei < Ef):
+        ax.fill_between(x, Ei, Ef, where=(Ei < Ef), color='yellow', alpha=0.3, label='Electron Inversion Layer')
+        
+    ax.set_xlim(left=-0.15)
+    ax.set_xlabel('Depth into Si [$\mu m$]')
+    ax.set_ylabel('Energy [eV]')
+    ax.set_title(f'MOS Band Diagram ($\phi_s$ = {phi_s:.3f} V)')
+    ax.legend(loc='best')
+    ax.grid(True, alpha=0.3)
+    
+    if filename is not None:
+        plt.savefig(filename, dpi=300, bbox_inches='tight')
+    
+    return fig
+    

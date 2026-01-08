@@ -15,6 +15,11 @@ A Python framework for extracting semiconductor device compact model parameters 
 * 3D characteristics surfaces: interactive 3D plots using Plotly to visualize device behavior over voltage and temperature ranges
 * Automated plotting: 2D plotting for fits, relative errors, and parameter trends
 
+### Physics Explorer
+* Interactive energy band diagrams ($E_c, E_v, E_f$) for PN junctions and MOS capacitors
+* Real-time calculation of key metrics: built-in potential ($V_{bi}$), depletion width ($W$), threshold voltage ($V_{th}$), and surface potential ($\phi_s$)
+* Visualize effects of doping ($N_A, N_D$), temperature ($T$), and geometry ($t_{ox}$) on device physics
+
 ### GUI
 Unified Streamlit dashboard that allows no-code interface that can:
 1. Generate synthetic data or upload custom CSVs
