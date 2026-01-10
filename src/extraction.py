@@ -3,6 +3,10 @@
 # Minimize sum(residuals**2) by making better guesses
 
 import numpy as np
+import torch
+import os 
+
+from src.models import DiodeNet, MOSFETNet
 from scipy.optimize import least_squares
 from scipy.constants import k as k_B, e as q_e
 
@@ -18,6 +22,33 @@ class ModelExtractor:
         self.result = None
         self.report = None
         
+    def _get_diode_ml_guess(self, V_data, I_data):
+        model_path = 'models/diode_model_weights.pth'
+        if not os.path.exists(model_path):
+            return None
+        
+        try:
+            target_v = np.linspace(0, 1.0, 150)
+            sort_idx = np.argsort(V_data) # sort data to get interpolation to work
+            v_sort = V_data[sort_idx]
+            i_sort = I_data[sort_idx]
+            i_interp = np.interp(target_v, v_sort, i_sort)
+            i_log = np.log10(np.abs(i_interp) + 1e-15) # log transform to match training data preprocessing
+            inputs = torch.tensor(i_log, dtype=torch.float32).unsqueeze(0) # (1, 150)
+            
+            model = DiodeNet(input_size=150)
+            model.load_state_dict(torch.load(model_path))
+            model.eval()
+            
+            with torch.no_grad():
+                preds = model(inputs).numpy()[0]
+                
+            return {'I_s': 10 ** preds[0], 'n': preds[1], 'R_s': preds[2]}
+        
+        except Exception as e:
+            print(f"Diode I-V ML interference warning: {e}")
+            return None
+
     def diode_fit(self, V_data, I_data, T=None, initial_params=None):
         """
         Fit a single I-V curve to extract saturation current, ideality factor and series resistance of a device
@@ -32,7 +63,11 @@ class ModelExtractor:
             dict: report containing fitted parameters, errors and solver status
         """
         if initial_params is None:
-            initial_params = {'I_s': 1e-12, 'n': 1.0, 'R_s': 0.1}
+            ml_g = self._get_diode_ml_guess(V_data, I_data)
+            if ml_g:
+                initial_params = ml_g
+            else:
+                initial_params = {'I_s': 1e-12, 'n': 1.0, 'R_s': 0.1}
             
         if 'I_s' not in initial_params:
             initial_params['I_s'] = 1e-12
@@ -201,6 +236,43 @@ class ModelExtractor:
         
         return report
     
+    def _get_mosfet_transfer_ml_guess(self, V_data, I_data, V_ds):
+        model_path = 'models/mosfet_transfer_model_weights.pth'
+        if not os.path.exists(model_path):
+            return None
+        
+        try:
+            if np.ndim(V_ds) > 0:
+                vds = float(np.mean(V_ds))
+            else:
+                vds = float(V_ds)
+                
+            v_max = float(np.max(V_data))
+            target_v = np.linspace(0, v_max, 150)
+            sort_idx = np.argsort(V_data) # sort data to get interpolation to work
+            v_sort = V_data[sort_idx]
+            i_sort = I_data[sort_idx]
+            i_interp = np.interp(target_v, v_sort, i_sort)
+            i_log = np.log10(np.abs(i_interp) + 1e-15) # log transform to match training data preprocessing
+            
+            meta = np.array([vds / 5.0, v_max / 5.0])
+            features = np.concatenate([i_log, meta])
+            inputs = torch.tensor(features, dtype=torch.float32).unsqueeze(0) # (1, 152)
+            
+            model = MOSFETNet(input_size=152)
+            model.load_state_dict(torch.load(model_path))
+            model.eval()
+            
+            with torch.no_grad():
+                preds = model(inputs).numpy()[0]
+                
+            return {'V_th': preds[0], 'k_n': 10 ** preds[1], 'lam': preds[2]}
+        
+        except Exception as e:
+            print(f"MOSFET transfer ML interference warning: {e}")
+            return None
+
+    
     def mosfet_fit(self, V_gs, I_data, V_ds, initial_params=None):
         """
         Fit a single I-V curve to extract threshold voltage, transconductance, lambda, and drain-to-source voltage of a device
@@ -215,7 +287,11 @@ class ModelExtractor:
             dict: report containing fitted parameters, errors and solver status
         """
         if initial_params is None:
-            initial_params = {'V_th': 0.5, 'k_n': 1e-4, 'lam': 0.0}
+            ml_g = self._get_mosfet_transfer_ml_guess(V_gs, I_data, V_ds)
+            if ml_g:
+                initial_params = ml_g
+            else:
+                initial_params = {'V_th': 0.5, 'k_n': 1e-4, 'lam': 0.0}
             
         if 'V_th' not in initial_params:
             initial_params['V_th'] = 0.5

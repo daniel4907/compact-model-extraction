@@ -5,9 +5,11 @@
 # V_t: threshold voltage
 
 import numpy as np
+import torch
+import torch.nn as nn
 from scipy.constants import k as k_B, e as q_e
 
-class DiodeModel:
+class DiodeModel():
     def __init__(self, T=300):
         """
         Class constructor for a generic diode device
@@ -91,6 +93,34 @@ class DiodeModel:
             'm': (0.1, 0.9)
         }
         
+class DiodeNet(nn.Module):
+    def __init__(self, input_size=50, output_size=3):
+        super(DiodeNet, self).__init__()
+        self.network = nn.Sequential(
+            nn.Linear(input_size, 64),
+            nn.ReLU(),
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            nn.Linear(64, output_size)
+        )
+    
+    def forward(self, x):
+        return self.network(x)
+
+class MOSFETNet(nn.Module):
+    def __init__(self, input_size=152, output_size=3):
+        super(MOSFETNet, self).__init__()
+        self.network = nn.Sequential(
+            nn.Linear(input_size, 64),
+            nn.ReLU(),
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            nn.Linear(64, output_size)
+        )
+    
+    def forward(self, x):
+        return self.network(x)
+    
 # 3 regions for MOSFETs: cutoff, triode and saturation regions
 # cutoff: I_D = 0
 # triode: I_D = mu_n * C_ox * (W / L) * [(V_GS - V_TH) * V_DS - V_DS**2/2], where k_n = mu_n * C_ox * (W / L)

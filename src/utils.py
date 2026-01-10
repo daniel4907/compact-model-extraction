@@ -132,3 +132,52 @@ def generate_spice_model(params, device_type, model_name='DUT'):
         return f".MODEL {model_name} D({param_str})\n"
     
     return ""
+
+def generate_training_data_diode(n_samples, v_range):
+    v = np.linspace(0, 1.0, 150)
+    x_data, y_data = [], []
+    
+    model = DiodeModel()
+    bounds = model.get_param_bounds()
+    
+    for _ in range(n_samples):
+        low_log = np.log10(bounds['I_s'][0])
+        high_log = np.log10(bounds['I_s'][1])
+        I_s = 10 ** np.random.uniform(low_log, high_log)
+        n = np.random.uniform(bounds['n'][0], bounds['n'][1])
+        R_s = np.random.uniform(bounds['R_s'][0], bounds['R_s'][1])
+        local_params = {'I_s': I_s, 'n': n, 'R_s': R_s}
+        I_true = model.compute_current(v, local_params)
+        I_noise = I_true * (1 + np.random.normal(scale=0.01, size=I_true.shape)) # add random gaussian noise
+        I_noise = np.abs(I_noise) # avoid negatives from noise
+        I_final = np.log10(I_noise + 1e-15) # avoid log(0)
+        x_data.append(I_final)
+        y_data.append([np.log10(I_s), n, R_s])
+        
+    return np.array(x_data), np.array(y_data)
+        
+def generate_training_transfer_mosfet(n_samples):
+    x_data, y_data = [], []
+    
+    model = MOSFETModel()
+    bounds = model.get_param_bounds()
+    
+    for _ in range(n_samples):
+        v_max = np.random.uniform(1.0, 5.0)
+        vgs = np.linspace(0, v_max, 150)
+        vth = np.random.uniform(bounds['V_th'][0], bounds['V_th'][1])
+        low_log = np.log10(bounds['k_n'][0])
+        high_log = np.log10(bounds['k_n'][1])
+        kn = 10 ** np.random.uniform(low_log, high_log)
+        lam = np.random.uniform(bounds['lam'][0], bounds['lam'][1])
+        vds = np.random.uniform(0.1, 5.0)
+        local_params = {'V_th': vth, 'k_n': kn, 'lam': lam, 'V_ds': vds}
+        I_true = model.compute_current(vgs, local_params)
+        I_noise = I_true * (1 + np.random.normal(scale=0.01, size=I_true.shape))
+        I_noise = np.abs(I_noise)
+        I_final = np.log10(I_noise + 1e-15)
+        features = np.concatenate([I_final, [vds / 5.0, v_max / 5.0]])
+        x_data.append(features)
+        y_data.append([vth, np.log10(kn), lam])
+        
+    return np.array(x_data), np.array(y_data)

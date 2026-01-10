@@ -151,14 +151,39 @@ if device_type == "Diode": # Diode logic
                 st.divider()
                 st.markdown("**Initial Guesses**") # input widget for initial param guesses
                 
+                def update_guess(params):
+                    st.session_state['guess_Is'] = float(params['I_s'])
+                    st.session_state['guess_n'] = float(params['n'])
+                    st.session_state['guess_Rs'] = float(params['R_s'])
+                
                 if fit_mode == 'C-V Curve':
                     g_Cj = st.number_input("Guess $C_j$", value=1e-12, format="%.2e")
                     g_Vbi = st.number_input("Guess $V_{bi}$", value=0.7)
                     g_m = st.number_input("Guess m", value=0.5)
-                else:
-                    g_Is = st.number_input("Guess $I_{s}$", value=1e-12, format="%.2e")
-                    g_n = st.number_input("Guess n", value=1.0)
-                    g_Rs = st.number_input("Guess $R_{s}$ (Ω)", value=0.1)
+                else: 
+                    if 'guess_Is' not in st.session_state: st.session_state['guess_Is'] = 1e-12
+                    if 'guess_n' not in st.session_state: st.session_state['guess_n'] = 1.0
+                    if 'guess_Rs' not in st.session_state: st.session_state['guess_Rs'] = 0.1
+                    
+                    if source != "Synthetic":
+                        def run_ml_guess():
+                            temp_model = DiodeModel()
+                            temp_ext = ModelExtractor(temp_model)
+                            pred = temp_ext._get_diode_ml_guess(df['V'].values, df['I'].values)
+                            if pred:
+                                st.session_state['guess_Is'] = float(pred['I_s'])
+                                st.session_state['guess_n'] = float(pred['n'])
+                                st.session_state['guess_Rs'] = float(pred['R_s'])
+                                st.toast("ML Prediction Applied")
+                            else:
+                                st.toast("ML Prediction Failed")
+                            
+                        st.button("Auto-Guess Parameters (ML)", on_click=run_ml_guess)
+                    
+                    g_Is = st.number_input("Guess $I_{s}$", format="%.2e", key='guess_Is')
+                    g_n = st.number_input("Guess n", key='guess_n')
+                    g_Rs = st.number_input("Guess $R_{s}$ (Ω)", key='guess_Rs')
+                    
                     if fit_mode == "Multi-Temperature I-V": # allow for initial Eg guess if using multi-temp diode data
                         g_Eg = st.number_input("Guess $E_{g}$ (eV)", value=1.1)
                     else:
@@ -421,8 +446,39 @@ elif device_type == "MOSFET": # MOSFET logic
             with col1:
                 st.divider()
                 st.markdown("**Initial Guesses**")
-                g_Vth = st.number_input("Guess $V_{th}$", value=0.5)
-                g_kn = st.number_input("Guess $k_{n}$", value=1e-4, format="%.2e")
+                
+                if 'guess_Vth' not in st.session_state: st.session_state['guess_Vth'] = 0.5
+                if 'guess_kn' not in st.session_state: st.session_state['guess_kn'] = 1e-4
+                
+                if source != "Synthetic":
+                    def run_mos_ml_guess():
+                        temp_model = MOSFETModel()
+                        temp_ext = ModelExtractor(temp_model)
+                        
+                        if 'V_ds' in df.columns: # heuristic, vds with most points
+                            vds_counts = df['V_ds'].value_counts()
+                            vds = vds_counts.idxmax()
+                            count = vds_counts.max()
+                        else: # fallback if only one vds
+                            vds = df['V_ds'].iloc[0] if 'V_ds' in df.columns else 0.0
+                            count = len(df)
+                            
+                        if count > 10:
+                            sub = df[df['V_ds'] == vds].sort_values('V_gs')
+                            pred = temp_ext._get_mosfet_transfer_ml_guess(sub['V_gs'].values, sub['I_d'].values, vds)
+                            if pred:
+                                st.session_state['guess_Vth'] = float(pred['V_th'])
+                                st.session_state['guess_kn'] = float(pred['k_n'])
+                                st.toast("ML Prediction Applied")
+                            else:
+                                st.toast("ML Prediction Failed")
+                        else:
+                            st.toast("Insufficient data points for ML guess")
+                            
+                    st.button("Auto-Guess Parameters (ML)", on_click=run_mos_ml_guess)
+                    
+                g_Vth = st.number_input("Guess $V_{th}$ (V)", key='guess_Vth')
+                g_kn = st.number_input("Guess $k_{n}$", format="%.2e", key='guess_kn')
 
             if fit_mode == "Multi-Curve": # detect how many unique family curves exist within CSV
                 st.info(f"Detected {df['V_gs'].nunique()} unique $V_{{gs}}$ curves for global fit.")
@@ -430,7 +486,7 @@ elif device_type == "MOSFET": # MOSFET logic
                 if st.button("Run Global Extraction", type="primary"):
                     model = MOSFETModel()
                     extractor = ModelExtractor(model)
-                    initial = {'V_th': g_Vth, 'k_n': g_kn, 'lam': 0.0}
+                    initial = {'V_th': st.session_state['guess_Vth'], 'k_n': st.session_state['guess_kn'], 'lam': 0.0}
                     
                     datasets = []
                     unique_vgs = sorted(df['V_gs'].unique())
@@ -458,7 +514,7 @@ elif device_type == "MOSFET": # MOSFET logic
                     if len(params) > 1:
                         sel_param = st.selectbox("Select V_ds", params)
                     subset = df[df['V_ds'] == sel_param].sort_values('V_gs')
-                    
+                
                 else: # Id-Vds
                     params = df['V_gs'].unique()
                     sel_param = params[0]
