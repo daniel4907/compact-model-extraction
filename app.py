@@ -125,26 +125,40 @@ if device_type == "Diode": # Diode logic
                 # key is necessary for state management, when key is changed (csv_diode -> csv_mosfet), the previous widget is destroyed
                 csv = st.file_uploader("Upload CSV", type=['csv'], key="csv_diode")
                 if csv:
-                    df = pd.read_csv(csv)
-                    cols = df.columns.tolist() # column mapping logic
-                    v_idx = 0
-                    v_col = st.selectbox("Voltage Column", cols, index=v_idx)
-                    
-                    if fit_mode == "C-V Curve":
-                        c_idx = 1 if len(cols) > 1 else 0
-                        c_col = st.selectbox("Capacitance Column", cols, index=c_idx)
-                        rename_dict = {v_col: 'V', c_col: 'C'}
-                    else:
-                        i_idx = 1 if len(cols) > 1 else 0
-                        i_col = st.selectbox("Current Column", cols, index=i_idx)
-                        rename_dict = {v_col: 'V', i_col: 'I'}
-                    
-                    if fit_mode == "Multi-Temperature I-V":
-                        t_idx = 2 if len(cols) > 2 else 0
-                        t_col = st.selectbox("Temperature Column", cols, index=t_idx)
-                        rename_dict[t_col] = 'T'
-                    
-                    df = df.rename(columns=rename_dict)
+                    try:
+                        df = pd.read_csv(csv)
+                    except Exception as e:
+                        st.error(f"Could not read CSV: {e}")
+                        df = None
+
+                    if df is not None and df.empty:
+                        st.error("Uploaded CSV has no data rows")
+                        df = None
+
+                    if df is not None and not df.columns.tolist():
+                        st.error("Uploaded CSV has no columns")
+                        df = None
+
+                    if df is not None:
+                        cols = df.columns.tolist() # column mapping logic
+                        v_idx = 0
+                        v_col = st.selectbox("Voltage Column", cols, index=v_idx)
+
+                        if fit_mode == "C-V Curve":
+                            c_idx = 1 if len(cols) > 1 else 0
+                            c_col = st.selectbox("Capacitance Column", cols, index=c_idx)
+                            rename_dict = {v_col: 'V', c_col: 'C'}
+                        else:
+                            i_idx = 1 if len(cols) > 1 else 0
+                            i_col = st.selectbox("Current Column", cols, index=i_idx)
+                            rename_dict = {v_col: 'V', i_col: 'I'}
+
+                        if fit_mode == "Multi-Temperature I-V":
+                            t_idx = 2 if len(cols) > 2 else 0
+                            t_col = st.selectbox("Temperature Column", cols, index=t_idx)
+                            rename_dict[t_col] = 'T'
+
+                        df = df.rename(columns=rename_dict)
                     
         if df is not None: # only show if data exists
             with col1:
@@ -213,43 +227,49 @@ if device_type == "Diode": # Diode logic
             if run_btn: # extraction logic
                 model = DiodeModel()
                 extractor = ModelExtractor(model)
-                
-                if fit_mode == 'C-V Curve':
-                    initial = {'C_j': g_Cj, 'V_bi': g_Vbi, 'm': g_m}
-                    report = extractor.diode_cv_fit(df['V'].values, df['C'].values, initial_params=initial)
-                    st.session_state['diode_result'] = {
-                        'type': 'cv',
-                        'report': report,
-                        'df': df,
-                        'model': model
-                    }
-                elif fit_mode == "Multi-Temperature I-V":
-                    datasets = []
-                    unique_temps = sorted(df['T'].unique())
-                    for T in unique_temps:
-                        sub = df[df['T'] == T].sort_values('V')
-                        datasets.append((sub['V'].values, sub['I'].values, float(T)))
-                    
-                    initial = {'I_s': g_Is, 'n': g_n, 'R_s': g_Rs, 'Eg': g_Eg}
-                    report = extractor.diode_temp_fit(datasets, initial_params=initial)
-                    
-                    st.session_state['diode_result'] = {
-                        'type': 'multi',
-                        'report': report,
-                        'datasets': datasets,
-                        'model': model
-                    }
-                    
-                else:
-                    initial = {'I_s': g_Is, 'n': g_n, 'R_s': g_Rs, 'Eg': g_Eg}
-                    report = extractor.diode_fit(df['V'].values, df['I'].values, initial_params=initial)
-                    
-                    st.session_state['diode_result'] = {
-                        'type': 'single',
-                        'report': report,
-                        'df': df,
-                        'model': model
-                    }
+
+                try:
+                    if fit_mode == 'C-V Curve':
+                        initial = {'C_j': g_Cj, 'V_bi': g_Vbi, 'm': g_m}
+                        report = extractor.diode_cv_fit(df['V'].values, df['C'].values, initial_params=initial)
+                        st.session_state['diode_result'] = {
+                            'type': 'cv',
+                            'report': report,
+                            'df': df,
+                            'model': model
+                        }
+                    elif fit_mode == "Multi-Temperature I-V":
+                        datasets = []
+                        unique_temps = sorted(df['T'].unique())
+                        for T in unique_temps:
+                            sub = df[df['T'] == T].sort_values('V')
+                            datasets.append((sub['V'].values, sub['I'].values, float(T)))
+
+                        if not datasets:
+                            st.error("No valid temperature groups found in data")
+                        else:
+                            initial = {'I_s': g_Is, 'n': g_n, 'R_s': g_Rs, 'Eg': g_Eg}
+                            report = extractor.diode_temp_fit(datasets, initial_params=initial)
+
+                            st.session_state['diode_result'] = {
+                                'type': 'multi',
+                                'report': report,
+                                'datasets': datasets,
+                                'model': model
+                            }
+
+                    else:
+                        initial = {'I_s': g_Is, 'n': g_n, 'R_s': g_Rs, 'Eg': g_Eg}
+                        report = extractor.diode_fit(df['V'].values, df['I'].values, initial_params=initial)
+
+                        st.session_state['diode_result'] = {
+                            'type': 'single',
+                            'report': report,
+                            'df': df,
+                            'model': model
+                        }
+                except Exception as e:
+                    st.error(f"Extraction failed: {e}")
                     
         if 'diode_result' in st.session_state:
             result = st.session_state['diode_result']
@@ -306,7 +326,7 @@ if device_type == "Diode": # Diode logic
                         st.markdown("### Junction State Visualization")
                         v_min = float(df_res['V'].min())
                         v_max = float(df_res['V'].max())
-                        vis_v = st.slider("Bias Voltage ($V$)", min_value=v_min, max_value=v_max, value=v_min, format="%.2f", key="cv_vis")
+                        vis_v = st.slider("Bias Voltage ($V$)", min_value=(v_min - 0.5), max_value=(v_max + 0.5), value=v_min, format="%.2f", key="cv_vis")
                     with col2:
                         fig_struct, ax_struct = plt.subplots(figsize=(5, 3))
                         draw_diode_cross(ax_struct, report['parameters'], v_bias=vis_v)
@@ -464,18 +484,32 @@ elif device_type == "MOSFET": # MOSFET logic
             else:
                 csv = st.file_uploader("Upload CSV", type=['csv'], key="csv_mosfet")
                 if csv:
-                    df = pd.read_csv(csv)
-                    cols = df.columns.tolist()
-                    
-                    vg_idx = 0
-                    vd_idx = 1 if len(cols) > 1 else 0
-                    id_idx = 2 if len(cols) > 2 else 0
-                    
-                    vg_col = st.selectbox("$V_{gs}$ Column", cols, index=vg_idx)
-                    vd_col = st.selectbox("$V_{ds}$ Column", cols, index=vd_idx)
-                    id_col = st.selectbox("$I_{d}$ Column", cols, index=id_idx)
-                    
-                    df = df.rename(columns={vg_col: 'V_gs', id_col: 'I_d', vd_col: 'V_ds'})
+                    try:
+                        df = pd.read_csv(csv)
+                    except Exception as e:
+                        st.error(f"Could not read CSV: {e}")
+                        df = None
+
+                    if df is not None and df.empty:
+                        st.error("Uploaded CSV has no data rows")
+                        df = None
+
+                    if df is not None and not df.columns.tolist():
+                        st.error("Uploaded CSV has no columns")
+                        df = None
+
+                    if df is not None:
+                        cols = df.columns.tolist()
+
+                        vg_idx = 0
+                        vd_idx = 1 if len(cols) > 1 else 0
+                        id_idx = 2 if len(cols) > 2 else 0
+
+                        vg_col = st.selectbox("$V_{gs}$ Column", cols, index=vg_idx)
+                        vd_col = st.selectbox("$V_{ds}$ Column", cols, index=vd_idx)
+                        id_col = st.selectbox("$I_{d}$ Column", cols, index=id_idx)
+
+                        df = df.rename(columns={vg_col: 'V_gs', id_col: 'I_d', vd_col: 'V_ds'})
                     
         if df is not None:
             st.subheader("Configuration")
@@ -519,12 +553,15 @@ elif device_type == "MOSFET": # MOSFET logic
                                 print(f"Multi-curve guess error: {e}")
                             
                         else:
-                            if sweep_type == "$I_{d}-V_{gs}$ (Transfer)":
-                                sub = df[df['V_ds'] == sel_param].sort_values('V_gs')
-                                pred = temp_ext._get_mosfet_transfer_ml_guess(sub['V_gs'].values, sub['I_d'].values, float(sel_param))
-                            else:
-                                sub = df[df['V_gs'] == sel_param].sort_values('V_ds')
-                                pred = temp_ext._get_mosfet_output_ml_guess(sub['V_ds'].values, sub['I_d'].values, float(sel_param))
+                            cur_sweep_type = st.session_state.get('sweep_type')
+                            cur_sel_param = st.session_state.get('sel_param')
+                            if cur_sel_param is not None:
+                                if cur_sweep_type == "$I_{d}-V_{gs}$ (Transfer)":
+                                    sub = df[df['V_ds'] == cur_sel_param].sort_values('V_gs')
+                                    pred = temp_ext._get_mosfet_transfer_ml_guess(sub['V_gs'].values, sub['I_d'].values, float(cur_sel_param))
+                                else:
+                                    sub = df[df['V_gs'] == cur_sel_param].sort_values('V_ds')
+                                    pred = temp_ext._get_mosfet_output_ml_guess(sub['V_ds'].values, sub['I_d'].values, float(cur_sel_param))
                                 
                         if pred:
                             st.session_state['guess_Vth'] = float(pred['V_th'])
@@ -556,63 +593,78 @@ elif device_type == "MOSFET": # MOSFET logic
                         sub = df[df['V_gs'] == vgs].sort_values('V_ds')
                         datasets.append((sub['V_ds'].values, sub['I_d'].values, float(vgs)))
                     
-                    report = extractor.multi_mosfet_fit(datasets, initial_params=initial)
-                    
-                    st.session_state['mosfet_result'] = {
-                        'type': 'multi',
-                        'report': report,
-                        'datasets': datasets,
-                        'model': model
-                    }
+                    try:
+                        report = extractor.multi_mosfet_fit(datasets, initial_params=initial)
+
+                        st.session_state['mosfet_result'] = {
+                            'type': 'multi',
+                            'report': report,
+                            'datasets': datasets,
+                            'model': model
+                        }
+                    except Exception as e:
+                        st.error(f"Extraction failed: {e}")
             else: # Single Curve Mode
                 sweep_type = st.radio("Sweep Type", ["$I_{d}-V_{gs}$ (Transfer)", "$I_{d}-V_{ds}$ (Output)"])
-                
+                st.session_state['sweep_type'] = sweep_type
+
                 subset = None
-                sel_param = 0.0
-                
+                sel_param = None
+
                 if sweep_type == "$I_{d}-V_{gs}$ (Transfer)":
                     params = df['V_ds'].unique()
-                    sel_param = params[0]
-                    if len(params) > 1:
-                        sel_param = st.selectbox("Select V_ds", params)
-                    subset = df[df['V_ds'] == sel_param].sort_values('V_gs')
-                
+                    if len(params) == 0:
+                        st.error("Uploaded data has no rows")
+                    else:
+                        sel_param = params[0]
+                        if len(params) > 1:
+                            sel_param = st.selectbox("Select V_ds", params)
+                        subset = df[df['V_ds'] == sel_param].sort_values('V_gs')
+
                 else: # Id-Vds
                     params = df['V_gs'].unique()
-                    sel_param = params[0]
-                    if len(params) > 1:
-                        sel_param = st.selectbox("Select V_gs", params)
-                    subset = df[df['V_gs'] == sel_param].sort_values('V_ds')
-                
-                if st.button("Run Extraction", type="primary"):
+                    if len(params) == 0:
+                        st.error("Uploaded data has no rows")
+                    else:
+                        sel_param = params[0]
+                        if len(params) > 1:
+                            sel_param = st.selectbox("Select V_gs", params)
+                        subset = df[df['V_gs'] == sel_param].sort_values('V_ds')
+
+                st.session_state['sel_param'] = sel_param
+
+                if subset is not None and st.button("Run Extraction", type="primary"):
                     model = MOSFETModel()
                     extractor = ModelExtractor(model)
                     initial = {'V_th': g_Vth, 'k_n': g_kn, 'lam': 0.0}
-                    
+
                     if sweep_type == "$I_{d}-V_{gs}$ (Transfer)":
                         v_gs_arg = subset['V_gs'].values
                         v_ds_arg = float(sel_param)
                     else:
                         v_ds_arg = subset['V_ds'].values
                         v_gs_arg = np.full_like(v_ds_arg, float(sel_param))
-                    
-                    report = extractor.mosfet_fit(
-                        v_gs_arg,
-                        subset['I_d'].values,
-                        V_ds=v_ds_arg,
-                        initial_params=initial
-                    )
-                    
-                    st.session_state['mosfet_result'] = {
-                        'type': 'single',
-                        'report': report,
-                        'subset': subset,
-                        'sweep_type': sweep_type,
-                        'v_ds_arg': v_ds_arg,
-                        'v_gs_arg': v_gs_arg,
-                        'sel_param': sel_param,
-                        'model': model
-                    }
+
+                    try:
+                        report = extractor.mosfet_fit(
+                            v_gs_arg,
+                            subset['I_d'].values,
+                            V_ds=v_ds_arg,
+                            initial_params=initial
+                        )
+
+                        st.session_state['mosfet_result'] = {
+                            'type': 'single',
+                            'report': report,
+                            'subset': subset,
+                            'sweep_type': sweep_type,
+                            'v_ds_arg': v_ds_arg,
+                            'v_gs_arg': v_gs_arg,
+                            'sel_param': sel_param,
+                            'model': model
+                        }
+                    except Exception as e:
+                        st.error(f"Extraction failed: {e}")
 
         # Render results from session state
         if 'mosfet_result' in st.session_state:

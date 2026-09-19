@@ -96,7 +96,8 @@ def diode_error_plot(V_data, I_data, model, fitted_params, filename=None, temps=
             
 def diode_dep_width_plot(V_data, C_data, area, filename=None):
     eps_si = 11.7 * 8.85e-14
-    w = eps_si * area / C_data
+    C_safe = np.maximum(np.abs(C_data), 1e-15)
+    w = eps_si * area / C_safe
     
     fig, ax = plt.subplots(figsize=(6, 4))
     ax.plot(V_data, w * 1e4)
@@ -390,7 +391,7 @@ def plot_diode_bands(band, filename=None):
     ax.plot(x, Ec, color='blue', linewidth=2, label='$E_c$')
     ax.plot(x, Ev, color='red', linewidth=2, label='$E_v$')
     
-    if np.any(np.abs(v_bias)) > 1e-4:
+    if np.any(np.abs(v_bias) > 1e-4):
         ax.plot(x, Efp, 'b--', linewidth=1.5, label='$E_{fp}$')
         ax.plot(x, Efn, 'r--', linewidth=1.5, label='$E_{fn}$')
     else:
